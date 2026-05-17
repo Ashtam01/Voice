@@ -1,0 +1,1 @@
+declare module '*.css'; // This tells TypeScript to treat any .css import as a valid module.
