@@ -25,7 +25,7 @@
 
 <!-- TODO: Replace with a screenshot of the app -->
 <p align="center">
-  <img src="" alt="Sampark — Dashboard" width="100%" />
+  <img src="public/cover.svg" alt="Sampark — Dashboard" width="100%" />
 </p>
 
 ---
