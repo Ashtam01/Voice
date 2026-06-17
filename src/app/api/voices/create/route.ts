@@ -2,6 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { parseBuffer } from "music-metadata";
 import { z } from "zod";
 import { polar } from "@/lib/polar";
+import { env } from "@/lib/env";
 import { prisma } from "@/lib/db";
 import { uploadAudio } from "@/lib/r2";
 import { VOICE_CATEGORIES } from "@/features/voices/data/voice-categories";
@@ -24,19 +25,32 @@ export async function POST(request: Request) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  // Admin bypass — unlimited access
+  const isAdmin = env.ADMIN_ORG_ID && orgId === env.ADMIN_ORG_ID;
+
+  if (!isAdmin) {
     // Check for active subscription before voice creation
-  try {
-    const customerState = await polar.customers.getStateExternal({
-      externalId: orgId,
-    });
-    const hasActiveSubscription =
-      (customerState.activeSubscriptions ?? []).length > 0;
-    if (!hasActiveSubscription) {
-      return Response.json({ error: "SUBSCRIPTION_REQUIRED" }, { status: 403 });
+    let hasActiveSubscription = false;
+    try {
+      const customerState = await polar.customers.getStateExternal({
+        externalId: orgId,
+      });
+      hasActiveSubscription =
+        (customerState.activeSubscriptions ?? []).length > 0;
+    } catch {
+      // Customer doesn't exist in Polar yet -> no subscription
     }
-  } catch {
-    // Customer doesn't exist in Polar yet -> no subscription
-    return Response.json({ error: "SUBSCRIPTION_REQUIRED" }, { status: 403 });
+
+    if (!hasActiveSubscription) {
+      // Allow 1 free voice clone trial — check if org has any existing custom voices
+      const existingCount = await prisma.voice.count({
+        where: { orgId, variant: "CUSTOM" },
+      });
+
+      if (existingCount >= 1) {
+        return Response.json({ error: "SUBSCRIPTION_REQUIRED" }, { status: 403 });
+      }
+    }
   }
 
   const url = new URL(request.url);

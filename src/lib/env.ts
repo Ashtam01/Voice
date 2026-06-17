@@ -15,6 +15,7 @@ export const env = createEnv({
     R2_BUCKET_NAME: z.string().min(1),
     CHATTERBOX_API_URL: z.url(),
     CHATTERBOX_API_KEY: z.string().min(1),
+    ADMIN_ORG_ID: z.string().optional(),
   },
   experimental__runtimeEnv: {},
   skipValidation: !!process.env.SKIP_ENV_VALIDATION,

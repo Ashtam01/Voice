@@ -3,6 +3,7 @@ import { z } from "zod";
 import { polar } from "@/lib/polar";
 import { TRPCError } from "@trpc/server";
 import { chatterbox } from "@/lib/chatterbox-client";
+import { env } from "@/lib/env";
 import { prisma } from "@/lib/db";
 import { uploadAudio } from "@/lib/r2";
 import { TEXT_MAX_LENGTH } from "@/features/text-to-speech/data/constants";
@@ -55,26 +56,35 @@ export const generationsRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ input, ctx }) => {
-      // Check for active subscription before generation
-      try {
-        const customerState = await polar.customers.getStateExternal({
-          externalId: ctx.orgId,
-        });
-        const hasActiveSubscription =
-          (customerState.activeSubscriptions ?? []).length > 0;
-        if (!hasActiveSubscription) {
-          throw new TRPCError({
-            code: "FORBIDDEN",
-            message: "SUBSCRIPTION_REQUIRED",
+      // Admin bypass — unlimited access
+      const isAdmin = env.ADMIN_ORG_ID && ctx.orgId === env.ADMIN_ORG_ID;
+
+      if (!isAdmin) {
+        // Check for active subscription before generation
+        let hasActiveSubscription = false;
+        try {
+          const customerState = await polar.customers.getStateExternal({
+            externalId: ctx.orgId,
           });
+          hasActiveSubscription =
+            (customerState.activeSubscriptions ?? []).length > 0;
+        } catch {
+          // Customer doesn't exist in Polar yet -> no subscription
         }
-      } catch (err) {
-        if (err instanceof TRPCError) throw err;
-        // Customer doesn't exist in Polar yet -> no subscription
-        throw new TRPCError({
-          code: "FORBIDDEN",
-          message: "SUBSCRIPTION_REQUIRED",
-        });
+
+        if (!hasActiveSubscription) {
+          // Allow 1 free TTS trial — check if org has any existing generations
+          const existingCount = await prisma.generation.count({
+            where: { orgId: ctx.orgId },
+          });
+
+          if (existingCount >= 1) {
+            throw new TRPCError({
+              code: "FORBIDDEN",
+              message: "SUBSCRIPTION_REQUIRED",
+            });
+          }
+        }
       }
 
       const voice = await prisma.voice.findUnique({
